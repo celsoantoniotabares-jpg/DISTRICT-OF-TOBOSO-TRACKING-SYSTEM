@@ -1,0 +1,6 @@
+{
+  "name": "District of Toboso Data Tracking System",
+  "description": "A centralized Data Tracking System where every school can upload its data, and the district office can automatically consolidate, analyze, and monitor the submitted information through one dashboard.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
