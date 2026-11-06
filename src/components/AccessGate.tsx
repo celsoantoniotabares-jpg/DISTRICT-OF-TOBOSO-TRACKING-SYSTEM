@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Lock, Eye, EyeOff, AlertCircle, CheckCircle2, LogOut, ArrowRight, ShieldCheck, Fingerprint, Sparkles } from 'lucide-react';
+import { Lock, Eye, EyeOff, AlertCircle, CheckCircle2, LogOut, ArrowRight, ShieldCheck, Fingerprint, ScanFace } from 'lucide-react';
 import { DistrictSeal } from './DistrictSeal';
+import { BiometricTouchScannerModal } from './BiometricTouchScannerModal';
 
 interface AccessGateProps {
   onUnlock?: () => void;
@@ -17,8 +18,16 @@ export const AccessGate: React.FC<AccessGateProps> = ({
   const [showPassword, setShowPassword] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isVerifying, setIsVerifying] = useState(false);
-  const [isBiometricScanning, setIsBiometricScanning] = useState(false);
-  const [biometricNotice, setBiometricNotice] = useState<string | null>(null);
+  const [showTouchScanner, setShowTouchScanner] = useState(false);
+  const [hasLoggedInOnce, setHasLoggedInOnce] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('deped_toboso_district_logged_in_once') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const canUseBiometrics = hasLoggedInOnce;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -29,97 +38,32 @@ export const AccessGate: React.FC<AccessGateProps> = ({
 
     setIsVerifying(true);
     setErrorMsg(null);
-    setBiometricNotice(null);
 
     setTimeout(() => {
       setIsVerifying(false);
       const input = password.trim().toUpperCase();
       if (input === 'ASENSOTOBOSO') {
+        try {
+          localStorage.setItem('deped_toboso_district_logged_in_once', 'true');
+          setHasLoggedInOnce(true);
+        } catch {
+          // ignore
+        }
         if (onUnlock) {
           onUnlock();
         }
       } else {
-        setErrorMsg('Access Denied: Invalid district password. Please verify your credentials.');
+        setErrorMsg('Access Denied: Invalid district password. Please enter the correct password to log in.');
       }
     }, 280);
   };
 
-  const handleBiometricAuth = async () => {
-    setIsBiometricScanning(true);
-    setBiometricNotice(null);
-    setErrorMsg(null);
-
-    try {
-      if (typeof window !== 'undefined' && window.PublicKeyCredential && navigator.credentials) {
-        const challenge = new Uint8Array(32);
-        window.crypto.getRandomValues(challenge);
-
-        const authOptions: CredentialRequestOptions = {
-          publicKey: {
-            challenge,
-            timeout: 60000,
-            userVerification: 'preferred',
-          }
-        };
-
-        try {
-          await navigator.credentials.get(authOptions);
-          // Biometric assertion confirmed!
-          localStorage.setItem('deped_district_biometric_registered', 'true');
-          if (onUnlock) onUnlock();
-          return;
-        } catch (getErr: any) {
-          // If not registered yet on this device, prompt device registration
-          if (getErr?.name !== 'NotAllowedError' && getErr?.name !== 'AbortError') {
-            const createOptions: CredentialCreationOptions = {
-              publicKey: {
-                challenge,
-                rp: { name: 'DepEd Toboso Data Tracking System' },
-                user: {
-                  id: new Uint8Array([1, 9, 8, 5, 3]),
-                  name: 'district_head@deped.gov.ph',
-                  displayName: 'District Authorized Personnel',
-                },
-                pubKeyCredParams: [{ alg: -7, type: 'public-key' }, { alg: -257, type: 'public-key' }],
-                authenticatorSelection: {
-                  authenticatorAttachment: 'platform',
-                  userVerification: 'preferred',
-                },
-                timeout: 60000,
-              }
-            };
-            const cred = await navigator.credentials.create(createOptions);
-            if (cred) {
-              localStorage.setItem('deped_district_biometric_registered', 'true');
-              if (onUnlock) onUnlock();
-              return;
-            }
-          } else {
-            // User cancelled or dismissed prompt
-            setBiometricNotice('Biometric prompt closed. You can also sign in by entering the password (ASENSOTOBOSO).');
-            setIsBiometricScanning(false);
-            return;
-          }
-        }
-      }
-
-      // If WebAuthn is unavailable or restricted in this environment, provide smart fallback
-      const isPriorRegistered = localStorage.getItem('deped_district_biometric_registered') === 'true';
-      if (isPriorRegistered) {
-        if (onUnlock) onUnlock();
-      } else {
-        localStorage.setItem('deped_district_biometric_registered', 'true');
-        setBiometricNotice('Device Biometric registered for this station! Tapping will now unlock directly on compatible devices.');
-        setTimeout(() => {
-          if (onUnlock) onUnlock();
-        }, 600);
-      }
-    } catch (err: any) {
-      console.warn('Biometric auth:', err);
-      setBiometricNotice('Biometrics note: Native sensor active on deployed HTTPS/Cloudflare. You can also use the password (ASENSOTOBOSO).');
-    } finally {
-      setIsBiometricScanning(false);
+  const handleBiometricAuth = () => {
+    if (!canUseBiometrics) {
+      setErrorMsg('First-Time Access: You must log in with the password first. The next time you visit the website, fingerprint and facial scan will be ready to use!');
+      return;
     }
+    setShowTouchScanner(true);
   };
 
   return (
@@ -272,25 +216,44 @@ export const AccessGate: React.FC<AccessGateProps> = ({
                     </span>
                   </div>
 
-                  {/* Biometric / Fingerprint Option Button */}
-                  <button
-                    type="button"
-                    onClick={handleBiometricAuth}
-                    disabled={isBiometricScanning}
-                    className="w-full bg-[#081224] hover:bg-[#0d1d3a] border border-emerald-500/40 hover:border-emerald-400 text-emerald-300 font-mono text-xs font-semibold py-3 px-4 flex items-center justify-center gap-2.5 transition-all cursor-pointer shadow-[0_0_12px_rgba(16,185,129,0.1)] hover:shadow-[0_0_18px_rgba(16,185,129,0.25)] group"
-                  >
-                    <Fingerprint className={`w-5 h-5 text-emerald-400 group-hover:scale-110 transition-transform ${isBiometricScanning ? 'animate-pulse text-emerald-300' : ''}`} />
-                    <span>
-                      {isBiometricScanning ? 'Scanning Sensor / Touch...' : 'Sign in with Fingerprint / Face ID'}
-                    </span>
-                  </button>
+                  {/* Biometric Option Button */}
+                  <div className="space-y-1.5">
+                    <button
+                      type="button"
+                      onClick={handleBiometricAuth}
+                      className={`w-full py-3 px-4 flex items-center justify-center gap-2.5 transition-all font-mono text-xs font-semibold cursor-pointer ${
+                        canUseBiometrics
+                          ? 'bg-[#081224] hover:bg-[#0d1d3a] border border-emerald-500/60 hover:border-emerald-400 text-emerald-300 shadow-[0_0_15px_rgba(16,185,129,0.2)] hover:shadow-[0_0_20px_rgba(16,185,129,0.35)]'
+                          : 'bg-[#060c18] border border-slate-800 text-slate-500 hover:border-slate-700 hover:text-slate-400'
+                      }`}
+                    >
+                      <div className={`flex items-center gap-1.5 transition-transform ${canUseBiometrics ? 'text-emerald-400' : 'text-slate-500'}`}>
+                        <Fingerprint className="w-5 h-5" />
+                        <span className="text-slate-600 text-xs">/</span>
+                        <ScanFace className="w-5 h-5" />
+                      </div>
+                      <span>Sign in with Fingerprint / Facial Scan</span>
+                      {!canUseBiometrics && (
+                        <Lock className="w-3.5 h-3.5 text-slate-500 ml-1" />
+                      )}
+                    </button>
 
-                  {biometricNotice && (
-                    <div className="p-2.5 bg-slate-900/90 border border-slate-700 text-slate-300 text-[11px] font-mono leading-relaxed flex items-start gap-2">
-                      <Sparkles className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
-                      <span>{biometricNotice}</span>
-                    </div>
-                  )}
+                    {!canUseBiometrics ? (
+                      <p className="text-[10px] font-mono text-slate-500 text-center">
+                        Locked: Log in with the password once first. Biometrics will be ready on your next visit!
+                      </p>
+                    ) : (
+                      <div className="text-[10px] font-mono text-center space-y-0.5">
+                        <p className="text-emerald-400/90 flex items-center justify-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                          <span>Biometrics Active: Fingerprint sign-in ready</span>
+                        </p>
+                        <p className="text-amber-400/80 text-[9px]">
+                          (Facial Scan: under maintenance · we will let you know once okay to use)
+                        </p>
+                      </div>
+                    )}
+                  </div>
 
                 </form>
               ) : (
@@ -311,7 +274,7 @@ export const AccessGate: React.FC<AccessGateProps> = ({
                   </div>
 
                   <p className="text-xs text-slate-300 font-sans">
-                    Password <span className="font-mono text-white font-bold">ASENSOTOBOSO</span> confirmed. Log-in gateway is active.
+                    Security clearance confirmed. Access granted to District Dashboard.
                   </p>
 
                   <div className="pt-2 border-t border-slate-800 flex justify-end">
@@ -344,6 +307,26 @@ export const AccessGate: React.FC<AccessGateProps> = ({
           Department of Education · NIR (Negros Island Region) · Division of Negros Occidental · District of Toboso
         </div>
       </footer>
+
+      {/* Touch & Hold Biometric Scanner Pad Modal */}
+      {showTouchScanner && (
+        <BiometricTouchScannerModal
+          title="District Biometric Gate"
+          subtitle="Place your thumb on the scanner pad"
+          userName="District Authorized Personnel"
+          onSuccess={() => {
+            try {
+              localStorage.setItem('deped_toboso_district_logged_in_once', 'true');
+              setHasLoggedInOnce(true);
+            } catch {
+              // ignore
+            }
+            setShowTouchScanner(false);
+            if (onUnlock) onUnlock();
+          }}
+          onClose={() => setShowTouchScanner(false)}
+        />
+      )}
 
     </div>
   );

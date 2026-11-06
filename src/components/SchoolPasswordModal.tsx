@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Lock, Eye, EyeOff, AlertCircle, X, CheckCircle2, Fingerprint, Sparkles } from 'lucide-react';
+import { Lock, Eye, EyeOff, AlertCircle, X, Fingerprint, ScanFace } from 'lucide-react';
+import { BiometricTouchScannerModal } from './BiometricTouchScannerModal';
 
 export interface SchoolPasswordTarget {
   name: string;
@@ -23,8 +24,17 @@ export const SchoolPasswordModal: React.FC<SchoolPasswordModalProps> = ({
   const [showPassword, setShowPassword] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isVerifying, setIsVerifying] = useState(false);
-  const [isBiometricScanning, setIsBiometricScanning] = useState(false);
-  const [biometricNotice, setBiometricNotice] = useState<string | null>(null);
+  const [showTouchScanner, setShowTouchScanner] = useState(false);
+  const [hasLoggedInOnce, setHasLoggedInOnce] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem(`deped_toboso_school_logged_in_once_${school.schoolId}`) === 'true' ||
+             localStorage.getItem('deped_toboso_district_logged_in_once') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const canUseBiometrics = hasLoggedInOnce;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -35,12 +45,17 @@ export const SchoolPasswordModal: React.FC<SchoolPasswordModalProps> = ({
 
     setIsVerifying(true);
     setErrorMsg(null);
-    setBiometricNotice(null);
 
     setTimeout(() => {
       setIsVerifying(false);
       // As requested by user: Password is "123456"
       if (password.trim() === '123456') {
+        try {
+          localStorage.setItem(`deped_toboso_school_logged_in_once_${school.schoolId}`, 'true');
+          setHasLoggedInOnce(true);
+        } catch {
+          // ignore
+        }
         onAuthenticated();
       } else {
         setErrorMsg('Invalid password. Access restricted to authorized school personnel.');
@@ -48,79 +63,12 @@ export const SchoolPasswordModal: React.FC<SchoolPasswordModalProps> = ({
     }, 200);
   };
 
-  const handleBiometricAuth = async () => {
-    setIsBiometricScanning(true);
-    setBiometricNotice(null);
-    setErrorMsg(null);
-
-    try {
-      if (typeof window !== 'undefined' && window.PublicKeyCredential && navigator.credentials) {
-        const challenge = new Uint8Array(32);
-        window.crypto.getRandomValues(challenge);
-
-        const authOptions: CredentialRequestOptions = {
-          publicKey: {
-            challenge,
-            timeout: 60000,
-            userVerification: 'preferred',
-          }
-        };
-
-        try {
-          await navigator.credentials.get(authOptions);
-          localStorage.setItem(`deped_biometric_${school.schoolId}`, 'true');
-          onAuthenticated();
-          return;
-        } catch (getErr: any) {
-          if (getErr?.name !== 'NotAllowedError' && getErr?.name !== 'AbortError') {
-            const createOptions: CredentialCreationOptions = {
-              publicKey: {
-                challenge,
-                rp: { name: 'DepEd Toboso School Gate' },
-                user: {
-                  id: new Uint8Array([1, 2, 3, 4]),
-                  name: `${school.schoolId}@deped.gov.ph`,
-                  displayName: school.name,
-                },
-                pubKeyCredParams: [{ alg: -7, type: 'public-key' }, { alg: -257, type: 'public-key' }],
-                authenticatorSelection: {
-                  authenticatorAttachment: 'platform',
-                  userVerification: 'preferred',
-                },
-                timeout: 60000,
-              }
-            };
-            const cred = await navigator.credentials.create(createOptions);
-            if (cred) {
-              localStorage.setItem(`deped_biometric_${school.schoolId}`, 'true');
-              onAuthenticated();
-              return;
-            }
-          } else {
-            setBiometricNotice('Biometric prompt closed. You can also sign in by typing the school passkey.');
-            setIsBiometricScanning(false);
-            return;
-          }
-        }
-      }
-
-      // Smooth fallback if sensor already registered or for instant test
-      const isPriorRegistered = localStorage.getItem(`deped_biometric_${school.schoolId}`) === 'true';
-      if (isPriorRegistered) {
-        onAuthenticated();
-      } else {
-        localStorage.setItem(`deped_biometric_${school.schoolId}`, 'true');
-        setBiometricNotice('Biometrics registered for this school station! Unlocking...');
-        setTimeout(() => {
-          onAuthenticated();
-        }, 500);
-      }
-    } catch (err: any) {
-      console.warn('Biometric auth notice:', err);
-      setBiometricNotice('Biometrics note: Native sensor active on deployed HTTPS/Cloudflare. You can also use the school passkey.');
-    } finally {
-      setIsBiometricScanning(false);
+  const handleBiometricAuth = () => {
+    if (!canUseBiometrics) {
+      setErrorMsg('First-Time Access: You must log in with the school password once first. The next time you open this school record, fingerprint and facial scan will be ready to use!');
+      return;
     }
+    setShowTouchScanner(true);
   };
 
   return (
@@ -227,29 +175,68 @@ export const SchoolPasswordModal: React.FC<SchoolPasswordModalProps> = ({
               </span>
             </div>
 
-            {/* Biometric / Fingerprint Option Button */}
-            <button
-              type="button"
-              onClick={handleBiometricAuth}
-              disabled={isBiometricScanning}
-              className="w-full bg-[#081224] hover:bg-[#0d1d3a] border border-emerald-500/40 hover:border-emerald-400 text-emerald-300 font-mono text-xs font-semibold py-2.5 px-4 flex items-center justify-center gap-2 transition-all cursor-pointer shadow-[0_0_12px_rgba(16,185,129,0.1)] hover:shadow-[0_0_18px_rgba(16,185,129,0.25)] group"
-            >
-              <Fingerprint className={`w-4 h-4 text-emerald-400 group-hover:scale-110 transition-transform ${isBiometricScanning ? 'animate-pulse text-emerald-300' : ''}`} />
-              <span>
-                {isBiometricScanning ? 'Scanning Fingerprint / Face...' : 'Sign in with Fingerprint / Face ID'}
-              </span>
-            </button>
+            {/* Biometric Option Button */}
+            <div className="space-y-1.5">
+              <button
+                type="button"
+                onClick={handleBiometricAuth}
+                className={`w-full py-2.5 px-4 flex items-center justify-center gap-2 transition-all font-mono text-xs font-semibold cursor-pointer ${
+                  canUseBiometrics
+                    ? 'bg-[#081224] hover:bg-[#0d1d3a] border border-emerald-500/50 hover:border-emerald-400 text-emerald-300 shadow-[0_0_12px_rgba(16,185,129,0.15)] hover:shadow-[0_0_18px_rgba(16,185,129,0.3)]'
+                    : 'bg-[#060c18] border border-slate-800 text-slate-500 hover:border-slate-700 hover:text-slate-400'
+                }`}
+              >
+                <div className={`flex items-center gap-1.5 transition-transform ${canUseBiometrics ? 'text-emerald-400' : 'text-slate-500'}`}>
+                  <Fingerprint className="w-4 h-4" />
+                  <span className="text-slate-600 text-xs">/</span>
+                  <ScanFace className="w-4 h-4" />
+                </div>
+                <span>Sign in with Fingerprint / Facial Scan</span>
+                {!canUseBiometrics && (
+                  <Lock className="w-3.5 h-3.5 text-slate-500 ml-1" />
+                )}
+              </button>
 
-            {biometricNotice && (
-              <div className="p-2 bg-slate-900/90 border border-slate-700 text-slate-300 text-[10px] font-mono leading-relaxed flex items-start gap-1.5">
-                <Sparkles className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
-                <span>{biometricNotice}</span>
-              </div>
-            )}
+              {!canUseBiometrics ? (
+                <p className="text-[10px] font-mono text-slate-500 text-center">
+                  Locked: Log in with the password once first. Biometrics will be ready on your next visit!
+                </p>
+              ) : (
+                <div className="text-[10px] font-mono text-center space-y-0.5">
+                  <p className="text-emerald-400/90 flex items-center justify-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                    <span>Biometrics Active: Fingerprint sign-in ready</span>
+                  </p>
+                  <p className="text-amber-400/80 text-[9px]">
+                    (Facial Scan: under maintenance · we will let you know once okay to use)
+                  </p>
+                </div>
+              )}
+            </div>
           </form>
         </div>
 
       </div>
+
+      {/* Touch & Hold Biometric Scanner Pad Modal */}
+      {showTouchScanner && (
+        <BiometricTouchScannerModal
+          title={`Biometric Gate: ${school.name}`}
+          subtitle="Place your thumb on the scanner pad"
+          userName={school.officialName || school.name}
+          onSuccess={() => {
+            try {
+              localStorage.setItem(`deped_toboso_school_logged_in_once_${school.schoolId}`, 'true');
+              setHasLoggedInOnce(true);
+            } catch {
+              // ignore
+            }
+            setShowTouchScanner(false);
+            onAuthenticated();
+          }}
+          onClose={() => setShowTouchScanner(false)}
+        />
+      )}
     </div>
   );
 };
