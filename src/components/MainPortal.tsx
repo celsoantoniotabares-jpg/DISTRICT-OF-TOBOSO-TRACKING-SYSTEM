@@ -30,6 +30,9 @@ import {
   DEPED_AI_DECLARATION
 } from '../utils/wordExport';
 
+import { useAssessmentData } from '../context/AssessmentDataContext';
+import { SchoolDataEditorModal } from './SchoolDataEditorModal';
+
 interface MainPortalProps {
   onLockSession: () => void;
 }
@@ -37,12 +40,13 @@ interface MainPortalProps {
 type CRLAViewSelection = 'g1_mtb' | 'g2_mtb' | 'g2_fil' | 'g3_mtb' | 'g3_fil' | 'g3_eng';
 
 export const MainPortal: React.FC<MainPortalProps> = ({ onLockSession }) => {
+  const { schools, updateSchoolCRLA } = useAssessmentData();
   const [activeModule, setActiveModule] = useState<'crla' | 'rma' | 'philiri'>('philiri');
   const [activeTab, setActiveTab] = useState<MainMenuTab>('dashboard');
-  const [schools, setSchools] = useState<SchoolRecord[]>(TOBOSO_SCHOOLS_INITIAL);
   const [selectedPeriod, setSelectedPeriod] = useState<AssessmentPeriod>('eosy');
   const [selectedCRLAView, setSelectedCRLAView] = useState<CRLAViewSelection>('g1_mtb');
   const [dashboardDisplayMode, setDashboardDisplayMode] = useState<'both' | 'graphs' | 'table'>('both');
+  const [showEditorForSchool, setShowEditorForSchool] = useState<SchoolRecord | null>(null);
   
   // Search & Filtering in Schools view
   const [searchTerm, setSearchTerm] = useState('');
@@ -128,22 +132,19 @@ export const MainPortal: React.FC<MainPortalProps> = ({ onLockSession }) => {
   };
 
   const handleToggleSchoolStatus = (schoolId: string) => {
-    setSchools(prev => prev.map(s => {
-      if (s.id === schoolId) {
-        const nextStatus = s.encodingStatus === 'Completed' ? 'Pending' : 'Completed';
-        const updated: SchoolRecord = {
-          ...s,
-          encodingStatus: nextStatus,
-          lastEncodedDate: nextStatus === 'Completed' ? '2026-03-30 (BOSY & EOSY Official)' : null,
-          encodedBy: nextStatus === 'Completed' ? 'DepEd Toboso District CRLA Coordinator' : null,
-        };
-        if (authenticatedSchool && authenticatedSchool.id === schoolId) {
-          setAuthenticatedSchool(updated);
-        }
-        return updated;
-      }
-      return s;
-    }));
+    const s = schools.find(x => x.id === schoolId || x.schoolId === schoolId);
+    if (!s) return;
+    const nextStatus = s.encodingStatus === 'Completed' ? 'Pending' : 'Completed';
+    const updated: SchoolRecord = {
+      ...s,
+      encodingStatus: nextStatus,
+      lastEncodedDate: nextStatus === 'Completed' ? '2026-03-30 (BOSY & EOSY Official)' : null,
+      encodedBy: nextStatus === 'Completed' ? 'DepEd Toboso District CRLA Coordinator' : null,
+    };
+    updateSchoolCRLA(s.schoolId, updated);
+    if (authenticatedSchool && (authenticatedSchool.id === schoolId || authenticatedSchool.schoolId === schoolId)) {
+      setAuthenticatedSchool(updated);
+    }
   };
 
   return (

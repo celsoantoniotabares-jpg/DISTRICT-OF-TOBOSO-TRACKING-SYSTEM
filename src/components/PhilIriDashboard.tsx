@@ -19,13 +19,23 @@ import {
 } from '../utils/philIriWordExport';
 import { PhilIriSeal } from './PhilIriSeal';
 import { PieDonutChart, ChartSegment } from './PieDonutChart';
+import { useAssessmentData } from '../context/AssessmentDataContext';
+import { SchoolPasswordModal } from './SchoolPasswordModal';
+import { SchoolDataEditorModal } from './SchoolDataEditorModal';
+import { Edit3, RotateCcw } from 'lucide-react';
 
 export const PhilIriDashboard: React.FC = () => {
+  const { philIriData, resetPhilIri, hasCustomEdits } = useAssessmentData();
   const [selectedPeriod, setSelectedPeriod] = useState<'bosy' | 'eosy' | 'comparative'>('eosy');
   const [selectedLanguage, setSelectedLanguage] = useState<'english' | 'filipino'>('english');
   const [selectedGrade, setSelectedGrade] = useState<'all' | 'grade4' | 'grade5' | 'grade6'>('all');
   const [displayMode, setDisplayMode] = useState<'both' | 'graphs' | 'table'>('both');
   const [searchTerm, setSearchTerm] = useState('');
+
+  // Password-protected editing
+  const [editingSchool, setEditingSchool] = useState<{ id: string; name: string } | null>(null);
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [showEditorModal, setShowEditorModal] = useState(false);
 
   // Helper to aggregate rows for Grades 4, 5, 6
   const aggregateGrades = (langData: { grade4: PhilIriSchoolRow[]; grade5: PhilIriSchoolRow[]; grade6: PhilIriSchoolRow[] }) => {
@@ -96,16 +106,16 @@ export const PhilIriDashboard: React.FC = () => {
     return Array.from(schoolMap.values());
   };
 
-  // Active dataset based on language, grade, and period
+  // Active dataset based on language, grade, and period (reads live from reactive philIriData context)
   const bosyRows = useMemo(() => {
-    const langData = PHIL_IRI_BOSY_DATA[selectedLanguage];
+    const langData = philIriData.bosy[selectedLanguage];
     return selectedGrade === 'all' ? aggregateGrades(langData) : langData[selectedGrade];
-  }, [selectedLanguage, selectedGrade]);
+  }, [selectedLanguage, selectedGrade, philIriData]);
 
   const eosyRows = useMemo(() => {
-    const langData = PHIL_IRI_EOSY_DATA[selectedLanguage];
+    const langData = philIriData.eosy[selectedLanguage];
     return selectedGrade === 'all' ? aggregateGrades(langData) : langData[selectedGrade];
-  }, [selectedLanguage, selectedGrade]);
+  }, [selectedLanguage, selectedGrade, philIriData]);
 
   const activeRows = useMemo(() => {
     if (selectedPeriod === 'bosy') return bosyRows;
@@ -137,19 +147,19 @@ export const PhilIriDashboard: React.FC = () => {
 
   // Grade 4, 5, 6 breakdown totals for active period
   const g4Totals = useMemo(() => {
-    const data = selectedPeriod === 'bosy' ? PHIL_IRI_BOSY_DATA : PHIL_IRI_EOSY_DATA;
+    const data = selectedPeriod === 'bosy' ? philIriData.bosy : philIriData.eosy;
     return computePhilIriTotals(data[selectedLanguage].grade4);
-  }, [selectedPeriod, selectedLanguage]);
+  }, [selectedPeriod, selectedLanguage, philIriData]);
 
   const g5Totals = useMemo(() => {
-    const data = selectedPeriod === 'bosy' ? PHIL_IRI_BOSY_DATA : PHIL_IRI_EOSY_DATA;
+    const data = selectedPeriod === 'bosy' ? philIriData.bosy : philIriData.eosy;
     return computePhilIriTotals(data[selectedLanguage].grade5);
-  }, [selectedPeriod, selectedLanguage]);
+  }, [selectedPeriod, selectedLanguage, philIriData]);
 
   const g6Totals = useMemo(() => {
-    const data = selectedPeriod === 'bosy' ? PHIL_IRI_BOSY_DATA : PHIL_IRI_EOSY_DATA;
+    const data = selectedPeriod === 'bosy' ? philIriData.bosy : philIriData.eosy;
     return computePhilIriTotals(data[selectedLanguage].grade6);
-  }, [selectedPeriod, selectedLanguage]);
+  }, [selectedPeriod, selectedLanguage, philIriData]);
 
   // Top 5 Schools by At Grade Level %
   const topSchools = useMemo(() => {
@@ -957,7 +967,20 @@ export const PhilIriDashboard: React.FC = () => {
                       }`}
                     >
                       <td className="p-2.5 text-left font-sans font-semibold text-slate-200 border-r border-slate-800 sticky left-0 z-10 bg-inherit shadow-[2px_0_5px_rgba(0,0,0,0.3)]">
-                        {r.schoolName}
+                        <div className="flex items-center justify-between gap-1.5">
+                          <span>{r.schoolName}</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingSchool({ id: r.schoolId, name: r.schoolName });
+                              setShowPasswordModal(true);
+                            }}
+                            className="p-1 rounded bg-slate-900 border border-slate-700 text-slate-400 hover:text-emerald-300 hover:border-emerald-500 transition-colors cursor-pointer"
+                            title={`Edit assessment numbers for ${r.schoolName} (Password protected)`}
+                          >
+                            <Edit3 className="w-3 h-3 text-emerald-400" />
+                          </button>
+                        </div>
                       </td>
                       <td className="p-2 text-slate-400 border-r border-slate-800/60">{r.bosyAssessed}</td>
                       <td className="p-2 text-white font-bold border-r border-slate-800/60">{r.eosyAssessed}</td>
@@ -1099,9 +1122,22 @@ export const PhilIriDashboard: React.FC = () => {
                         idx % 2 === 0 ? 'bg-[#08101e]' : 'bg-[#060b14]'
                       }`}
                     >
-                      {/* School Name */}
+                      {/* School Name with Edit Action */}
                       <td className="p-2.5 text-left font-sans font-semibold text-slate-200 border-r border-slate-800 sticky left-0 z-10 bg-inherit shadow-[2px_0_5px_rgba(0,0,0,0.3)]">
-                        {r.schoolName}
+                        <div className="flex items-center justify-between gap-1.5">
+                          <span>{r.schoolName}</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingSchool({ id: r.schoolId, name: r.schoolName });
+                              setShowPasswordModal(true);
+                            }}
+                            className="p-1 rounded bg-slate-900 border border-slate-700 text-slate-400 hover:text-emerald-300 hover:border-emerald-500 transition-colors cursor-pointer"
+                            title={`Edit assessment numbers for ${r.schoolName} (Password protected)`}
+                          >
+                            <Edit3 className="w-3 h-3 text-emerald-400" />
+                          </button>
+                        </div>
                       </td>
 
                       {/* Total Assessed */}
@@ -1227,6 +1263,34 @@ export const PhilIriDashboard: React.FC = () => {
           </div>
 
         </div>
+      )}
+
+      {/* Password Modal for Phil-IRI Edit */}
+      {showPasswordModal && editingSchool && (
+        <SchoolPasswordModal
+          school={{ schoolId: editingSchool.id, name: editingSchool.name }}
+          onAuthenticated={() => {
+            setShowPasswordModal(false);
+            setShowEditorModal(true);
+          }}
+          onClose={() => {
+            setShowPasswordModal(false);
+            setEditingSchool(null);
+          }}
+        />
+      )}
+
+      {/* Interactive Data Editor Modal */}
+      {showEditorModal && editingSchool && (
+        <SchoolDataEditorModal
+          schoolId={editingSchool.id}
+          schoolName={editingSchool.name}
+          initialDomain="philiri"
+          onClose={() => {
+            setShowEditorModal(false);
+            setEditingSchool(null);
+          }}
+        />
       )}
 
     </div>

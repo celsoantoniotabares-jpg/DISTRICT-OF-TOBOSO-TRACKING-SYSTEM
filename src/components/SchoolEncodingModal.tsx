@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { X, FileText, Download, CheckCircle2, TrendingUp, ShieldCheck, BookOpen, Sparkles, Layers, ArrowUpRight } from 'lucide-react';
+import { X, FileText, Download, CheckCircle2, TrendingUp, ShieldCheck, BookOpen, Layers, ArrowUpRight, Edit3 } from 'lucide-react';
 import { SchoolRecord, CRLASubjectData, AssessmentPeriod } from '../types';
 import { exportIndividualSchoolWord, exportIndividualAnalyticsWord } from '../utils/wordExport';
+import { SchoolDataEditorModal } from './SchoolDataEditorModal';
 
 interface SchoolEncodingModalProps {
   school: SchoolRecord;
@@ -17,6 +18,7 @@ export const SchoolEncodingModal: React.FC<SchoolEncodingModalProps> = ({
   const [activeGradeTab, setActiveGradeTab] = useState<'grade1' | 'grade2' | 'grade3' | 'progress'>('grade1');
   const [selectedSubTabG2, setSelectedSubTabG2] = useState<'mtb' | 'filipino'>('mtb');
   const [selectedSubTabG3, setSelectedSubTabG3] = useState<'mtb' | 'filipino' | 'english'>('mtb');
+  const [showEditorModal, setShowEditorModal] = useState(false);
 
   const activePeriodData = period === 'eosy' && school.eosy ? school.eosy : school.bosy;
   const isEosy = period === 'eosy';
@@ -451,6 +453,15 @@ export const SchoolEncodingModal: React.FC<SchoolEncodingModalProps> = ({
             <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
               <button
                 type="button"
+                onClick={() => setShowEditorModal(true)}
+                className="px-3.5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-mono text-xs font-bold flex items-center justify-center gap-2 transition-colors cursor-pointer border border-emerald-400"
+              >
+                <Edit3 className="w-3.5 h-3.5" />
+                <span>Edit School Numbers</span>
+              </button>
+
+              <button
+                type="button"
                 onClick={() => exportIndividualSchoolWord(school, period)}
                 className="flex-1 sm:flex-none px-3.5 py-2.5 bg-blue-900/40 hover:bg-blue-800/60 border border-blue-500/40 text-blue-200 hover:text-white font-mono text-xs flex items-center justify-center gap-2 transition-colors cursor-pointer"
               >
@@ -476,6 +487,16 @@ export const SchoolEncodingModal: React.FC<SchoolEncodingModalProps> = ({
               Close
             </button>
           </div>
+
+          {/* Mount SchoolDataEditorModal */}
+          {showEditorModal && (
+            <SchoolDataEditorModal
+              schoolId={school.schoolId}
+              schoolName={school.name}
+              initialDomain="crla"
+              onClose={() => setShowEditorModal(false)}
+            />
+          )}
 
         </div>
 

@@ -14,11 +14,15 @@ import {
   DEPED_RMA_AI_DECLARATION
 } from '../utils/rmaWordExport';
 import { SchoolPasswordModal } from './SchoolPasswordModal';
+import { useAssessmentData } from '../context/AssessmentDataContext';
+import { SchoolDataEditorModal } from './SchoolDataEditorModal';
+import { Edit3 } from 'lucide-react';
 
 type RMAPeriod = 'comparative' | 'bosy' | 'eosy';
 type RMADisplayMode = 'both' | 'graphs' | 'table';
 
 export const RMADashboard: React.FC = () => {
+  const { rmaData } = useAssessmentData();
   const [selectedPeriod, setSelectedPeriod] = useState<RMAPeriod>('comparative');
   const [displayMode, setDisplayMode] = useState<RMADisplayMode>('both');
   const [searchTerm, setSearchTerm] = useState('');
@@ -28,10 +32,11 @@ export const RMADashboard: React.FC = () => {
   const [selectedSchoolForModal, setSelectedSchoolForModal] = useState<RMASchoolRecord | null>(null);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authenticatedSchool, setAuthenticatedSchool] = useState<RMASchoolRecord | null>(null);
+  const [showEditorModal, setShowEditorModal] = useState(false);
 
-  // Filtered schools
+  // Filtered schools (from reactive context)
   const filteredSchools = useMemo(() => {
-    return RMA_DISTRICT_DATA.filter(s => {
+    return rmaData.filter(s => {
       const matchSearch = s.officialName.toLowerCase().includes(searchTerm.toLowerCase()) ||
                           s.displayName.toLowerCase().includes(searchTerm.toLowerCase()) ||
                           s.schoolId.includes(searchTerm) ||
@@ -51,7 +56,7 @@ export const RMADashboard: React.FC = () => {
       }
       return true;
     });
-  }, [searchTerm, filterCategory]);
+  }, [rmaData, searchTerm, filterCategory]);
 
   const handleOpenSchoolAuth = (school: RMASchoolRecord) => {
     setSelectedSchoolForModal(school);
@@ -347,6 +352,17 @@ export const RMADashboard: React.FC = () => {
                             <div className="flex items-center justify-center gap-1.5">
                               <button
                                 type="button"
+                                onClick={() => {
+                                  setSelectedSchoolForModal(school);
+                                  setShowAuthModal(true);
+                                }}
+                                title="Edit Numeracy Data (Password Protected)"
+                                className="p-1 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-emerald-400 border border-slate-700 transition-colors cursor-pointer"
+                              >
+                                <Edit3 className="w-3.5 h-3.5 text-emerald-400" />
+                              </button>
+                              <button
+                                type="button"
                                 onClick={() => handleOpenSchoolAuth(school)}
                                 title="School Station Access"
                                 className="p-1 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition-colors cursor-pointer"
@@ -583,9 +599,29 @@ export const RMADashboard: React.FC = () => {
                 <Download className="w-4 h-4" />
                 <span>Download School RMA Report (.doc)</span>
               </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowEditorModal(true);
+                }}
+                className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white text-xs font-mono font-bold flex items-center gap-2 cursor-pointer"
+              >
+                <Edit3 className="w-4 h-4" />
+                <span>Edit RMA Numbers</span>
+              </button>
             </div>
           </div>
         </div>
+      )}
+
+      {/* Direct Data Editor Modal */}
+      {showEditorModal && authenticatedSchool && (
+        <SchoolDataEditorModal
+          schoolId={authenticatedSchool.schoolId}
+          schoolName={authenticatedSchool.displayName}
+          initialDomain="rma"
+          onClose={() => setShowEditorModal(false)}
+        />
       )}
 
     </div>

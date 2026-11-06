@@ -6,19 +6,22 @@
 import React, { useState } from 'react';
 import { AccessGate } from './components/AccessGate';
 import { MainPortal } from './components/MainPortal';
+import { AssessmentDataProvider } from './context/AssessmentDataContext';
 
 export default function App() {
   const [isUnlocked, setIsUnlocked] = useState(false);
 
-  if (isUnlocked) {
-    return <MainPortal onLockSession={() => setIsUnlocked(false)} />;
-  }
-
   return (
-    <AccessGate
-      isUnlocked={isUnlocked}
-      onUnlock={() => setIsUnlocked(true)}
-      onLock={() => setIsUnlocked(false)}
-    />
+    <AssessmentDataProvider>
+      {isUnlocked ? (
+        <MainPortal onLockSession={() => setIsUnlocked(false)} />
+      ) : (
+        <AccessGate
+          isUnlocked={isUnlocked}
+          onUnlock={() => setIsUnlocked(true)}
+          onLock={() => setIsUnlocked(false)}
+        />
+      )}
+    </AssessmentDataProvider>
   );
 }

@@ -26,33 +26,51 @@ import {
 } from 'lucide-react';
 import { PhilIriSeal } from './PhilIriSeal';
 import { PieDonutChart, ChartSegment } from './PieDonutChart';
+import { useAssessmentData } from '../context/AssessmentDataContext';
+import { SchoolPasswordModal } from './SchoolPasswordModal';
+import { SchoolDataEditorModal } from './SchoolDataEditorModal';
+import { Edit3, RotateCcw } from 'lucide-react';
 
 interface IndividualSchoolAnalyticsProps {
-  schools: SchoolRecord[];
+  schools?: SchoolRecord[];
   onOpenStation: (school: SchoolRecord) => void;
   onExportWord: (school: SchoolRecord) => void;
 }
 
 export const IndividualSchoolAnalytics: React.FC<IndividualSchoolAnalyticsProps> = ({
-  schools,
+  schools: propSchools,
   onOpenStation,
   onExportWord
 }) => {
+  const { 
+    schools: ctxSchools, 
+    rmaData, 
+    philIriData, 
+    resetAllToBaseline, 
+    hasCustomEdits 
+  } = useAssessmentData();
+  
+  const schools = ctxSchools || propSchools;
   const [selectedSchoolId, setSelectedSchoolId] = useState<string>(schools[0]?.schoolId || '116130');
   const [activeDomain, setActiveDomain] = useState<'overview' | 'crla' | 'rma' | 'philiri'>('overview');
   const [philIriLang, setPhilIriLang] = useState<'english' | 'filipino'>('english');
   const [searchTerm, setSearchTerm] = useState('');
+
+  // Password-protected editor state
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [showEditorModal, setShowEditorModal] = useState(false);
+  const [editorDomain, setEditorDomain] = useState<'crla' | 'rma' | 'philiri'>('crla');
 
   // Selected school record
   const currentSchool = useMemo(() => {
     return schools.find(s => s.schoolId === selectedSchoolId) || schools[0];
   }, [schools, selectedSchoolId]);
 
-  // CRLA Data for this school
+  // CRLA Data for this school (reads live from reactive schools context)
   const crlaData = useMemo(() => {
     if (!currentSchool) return null;
-    const bosy = CRLA_BOSY_SCHOOLS.find(s => s.schoolId === currentSchool.schoolId);
-    const eosy = CRLA_EOSY_SCHOOLS.find(s => s.schoolId === currentSchool.schoolId);
+    const bosy = currentSchool.bosy;
+    const eosy = currentSchool.eosy;
 
     const sumCRLA = (record?: typeof bosy) => {
       if (!record) return { total: 0, emerging: 0, developing: 0, transitioning: 0, atGradeLevel: 0 };
@@ -72,6 +90,7 @@ export const IndividualSchoolAnalytics: React.FC<IndividualSchoolAnalyticsProps>
       let atGradeLevel = 0;
 
       subjects.forEach(sub => {
+        if (!sub) return;
         total += sub.assessed.total;
         emerging += sub.emerging.total;
         developing += sub.developing.total;
@@ -83,7 +102,7 @@ export const IndividualSchoolAnalytics: React.FC<IndividualSchoolAnalyticsProps>
     };
 
     const b = sumCRLA(bosy);
-    const e = sumCRLA(eosy);
+    const e = sumCRLA(eosy || undefined);
 
     return {
       bosy: b,
@@ -95,18 +114,18 @@ export const IndividualSchoolAnalytics: React.FC<IndividualSchoolAnalyticsProps>
     };
   }, [currentSchool]);
 
-  // RMA Data for this school
+  // RMA Data for this school (reads live from context)
   const currentRmaData = useMemo<RMASchoolRecord | undefined>(() => {
     if (!currentSchool) return undefined;
-    return RMA_DISTRICT_DATA.find(r => r.schoolId === currentSchool.schoolId);
-  }, [currentSchool]);
+    return rmaData.find(r => r.schoolId === currentSchool.schoolId);
+  }, [currentSchool, rmaData]);
 
-  // Phil-IRI Data for this school across Grades 4, 5, 6
+  // Phil-IRI Data for this school across Grades 4, 5, 6 (reads live from context)
   const currentPhilIriData = useMemo(() => {
     if (!currentSchool) return null;
 
-    const bData = PHIL_IRI_BOSY_DATA[philIriLang];
-    const eData = PHIL_IRI_EOSY_DATA[philIriLang];
+    const bData = philIriData.bosy[philIriLang];
+    const eData = philIriData.eosy[philIriLang];
 
     const g4B = bData.grade4.find(r => r.schoolId === currentSchool.schoolId);
     const g5B = bData.grade5.find(r => r.schoolId === currentSchool.schoolId);
@@ -156,7 +175,7 @@ export const IndividualSchoolAnalytics: React.FC<IndividualSchoolAnalyticsProps>
       frustrationReduction: bosyTotals.frustration - eosyTotals.frustration,
       threeLvlReduction: bosyTotals.threeLvl - eosyTotals.threeLvl
     };
-  }, [currentSchool, philIriLang]);
+  }, [currentSchool, philIriLang, philIriData]);
 
   // Filtered schools for quick search switcher
   const filteredSchoolsList = useMemo(() => {
@@ -271,8 +290,21 @@ export const IndividualSchoolAnalytics: React.FC<IndividualSchoolAnalyticsProps>
           </p>
         </div>
 
-        {/* Action Buttons: Open Station & Export Word */}
+        {/* Action Buttons: Edit School Data, Open Station & Export Word */}
         <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              setEditorDomain(activeDomain === 'overview' ? 'crla' : activeDomain);
+              setShowPasswordModal(true);
+            }}
+            className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded flex items-center gap-2 shadow-md transition-all cursor-pointer border border-emerald-400"
+            title="Password protected editing station"
+          >
+            <Edit3 className="w-3.5 h-3.5" />
+            <span>Edit School Data</span>
+          </button>
+
           <button
             type="button"
             onClick={() => onOpenStation(currentSchool)}
@@ -290,6 +322,22 @@ export const IndividualSchoolAnalytics: React.FC<IndividualSchoolAnalyticsProps>
             <FileDown className="w-3.5 h-3.5 text-sky-400" />
             <span>Download School Word (.doc)</span>
           </button>
+
+          {hasCustomEdits && (
+            <button
+              type="button"
+              onClick={() => {
+                if (window.confirm('Reset all assessment numbers back to official DepEd Toboso baseline?')) {
+                  resetAllToBaseline();
+                }
+              }}
+              className="px-3 py-2 bg-rose-950/80 hover:bg-rose-900 text-rose-300 border border-rose-500/40 rounded flex items-center gap-1.5 cursor-pointer"
+              title="Revert back to verified baseline numbers"
+            >
+              <RotateCcw className="w-3 h-3" />
+              <span>Reset Baseline</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -1097,6 +1145,28 @@ export const IndividualSchoolAnalytics: React.FC<IndividualSchoolAnalyticsProps>
           })}
         </div>
       </div>
+
+      {/* Security Password Gate for Editing */}
+      {showPasswordModal && (
+        <SchoolPasswordModal
+          school={currentSchool}
+          onAuthenticated={() => {
+            setShowPasswordModal(false);
+            setShowEditorModal(true);
+          }}
+          onClose={() => setShowPasswordModal(false)}
+        />
+      )}
+
+      {/* Interactive Data Editor Modal */}
+      {showEditorModal && (
+        <SchoolDataEditorModal
+          schoolId={currentSchool.schoolId}
+          schoolName={currentSchool.name}
+          initialDomain={editorDomain}
+          onClose={() => setShowEditorModal(false)}
+        />
+      )}
 
     </div>
   );
